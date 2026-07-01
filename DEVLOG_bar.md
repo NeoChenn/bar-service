@@ -151,20 +151,41 @@ Phase 3: Stripe Checkout integration — the most technically critical phase. Im
 *Date: July 2026*
 
 ### What I built
-<!-- Fill this in -->
+
+- `backend/database.py` — Supabase Python client singleton initialised with the service role key, imported wherever the backend needs to read/write the DB
+- `POST /orders/checkout` — receives cart from frontend, fetches current prices from Supabase (never trusts client-sent prices), validates every item is available, builds Stripe `line_items` with amounts in pence, stores a cart snapshot in Stripe session metadata, returns the Stripe Checkout session URL
+- `POST /orders/webhook` — verifies the `Stripe-Signature` header, handles `checkout.session.completed`, checks for duplicate session (idempotency), writes `orders` and `order_items` rows to Supabase using the snapshotted cart from metadata
+- `GET /orders/by-session/{session_id}` — poll endpoint for the confirmation page; returns 404 until the webhook has written the order, then returns the order with its items
+- `CartPage.jsx` — checkout button now POSTs to `/orders/checkout`, redirects to Stripe's hosted page with `window.location.href`, handles loading and error states
+- `ConfirmationPage.jsx` — on mount clears the cart and polls the backend every 2 seconds for up to 30 seconds; shows a confirmed order summary on success, a graceful fallback message on timeout (webhook delayed but payment succeeded), and an error state if no session ID is in the URL
+- Fixed `main.py` to call `load_dotenv()` before importing routes — it was called after, meaning `stripe_service.py` and `database.py` would read `None` for all env vars at startup
+- Updated `schema.sql`: renamed `stripe_payment_intent_id` → `stripe_session_id` (the session ID is what Stripe puts in the redirect URL and what's available on the webhook event)
 
 ### What broke / what was hard
-<!-- Stripe integration almost always has surprises — document them here -->
-<!-- Webhook verification issues? Local testing with Stripe CLI? Redirect URL issues? -->
+
+- **`load_dotenv()` was called after route imports in `main.py`**: `stripe_service.py` sets `stripe.api_key = os.getenv("STRIPE_SECRET_KEY")` at module level, and `database.py` creates the Supabase client at module level. Both happen when the routes are imported — before `load_dotenv()` had run. The fix was to move `load_dotenv()` to the very top of `main.py`, before any imports that depend on env vars.
+- **Missing `pip install -r requirements.txt`**: the backend packages (including `stripe`) weren't installed until explicitly running this. Standard Python setup step but easy to miss if you're used to Node where `npm install` is a more obvious first step.
 
 ### What I learned
-<!-- Fill this in — this will be the richest section given Stripe is new -->
+
+- **Stripe works in pence/cents, not pounds**: `unit_amount` in Stripe's API is always the smallest currency unit — pence for GBP, cents for USD. A £5.50 pint is `unit_amount: 550`. Easy to get wrong and have prices come out 100× too high or low. Always multiply by 100 when sending to Stripe, divide by 100 when reading `amount_total` back.
+- **The Stripe webhook signature must be verified on the raw request body**: FastAPI reads the body as bytes for the webhook endpoint. If you let FastAPI parse it as JSON first, the bytes change and `stripe.Webhook.construct_event()` always fails with a signature error. The raw body must be passed directly.
+- **Cart snapshot in Stripe session metadata**: the webhook fires asynchronously — it doesn't have access to the original request. To avoid re-querying the DB for prices (which could have changed between checkout creation and webhook delivery), the verified server-side cart is serialised into Stripe session `metadata` when creating the session. The webhook reads it back and writes the order directly. Prices in the snapshot are server-computed and can be trusted.
+- **Stripe retries webhooks on non-2xx responses**: if the webhook handler returns a 5xx (or crashes), Stripe retries for up to 72 hours. This means the handler must be idempotent — if it runs twice for the same event, it must not write duplicate orders. The fix: check if an order with the same `stripe_session_id` already exists before inserting.
+- **`{CHECKOUT_SESSION_ID}` is a Stripe template literal in success URLs**: if you set `success_url = "https://yoursite.com/confirmation?session_id={CHECKOUT_SESSION_ID}"`, Stripe substitutes the real session ID before redirecting the customer. This is how the confirmation page knows which session to poll for — without it, you'd have no way to link the redirect back to a specific payment.
+- **Python virtual environments**: needed to create a `.venv` and run `pip install -r requirements.txt` before the backend would start. Standard Python setup, but different from Node where package installation is more implicit.
+- **`load_dotenv()` must run before module-level code that reads env vars**: in Python, module-level code (outside functions/classes) runs at import time. Any module that calls `os.getenv()` at the top level will get `None` if `load_dotenv()` hasn't been called yet. The fix is always to call `load_dotenv()` as the very first thing in `main.py`.
 
 ### Decisions made
-<!-- Fill this in -->
+
+- **Cart snapshot in metadata over re-fetching prices in the webhook**: the webhook could re-query Supabase for prices, but that adds a DB round-trip and introduces a race condition (what if a price changed between checkout and webhook?). Snapshotting the server-computed prices into metadata is simpler, faster, and guarantees the order records exactly what the customer paid for.
+- **`stripe_session_id` instead of `stripe_payment_intent_id` on the orders table**: the session ID is the natural key here — it's what Stripe puts in the redirect URL and what's on the webhook event without any extra API calls. The payment intent ID is also available but not needed for any current use case.
+- **Confirmation page clears the cart on mount, not after polling confirms**: payment was already confirmed by Stripe before redirecting to `/confirmation` (Stripe only redirects on success). Waiting for the webhook poll to clear the cart would leave it populated during the "Confirming your order..." screen, which is confusing. Clearing immediately is correct.
+- **`GET /orders/by-session/{session_id}` as a separate endpoint from `GET /orders/{order_id}`**: the confirmation page only knows the Stripe session ID (from the URL), not the internal order UUID. Keeping them as separate endpoints is cleaner than trying to detect which type of ID was passed. `/{order_id}` stays as a UUID lookup for the staff dashboard (Phase 4).
 
 ### What's next
-<!-- Fill this in -->
+
+Phase 4: staff dashboard — Supabase Realtime subscription on the `orders` table so new orders appear live, order status updates (pending → preparing → served / cancelled), implement `GET /orders/` and `PATCH /orders/{order_id}/status` in the backend.
 
 ---
 
