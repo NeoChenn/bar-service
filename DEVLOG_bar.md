@@ -209,7 +209,6 @@ Phase 4: staff dashboard — Supabase Realtime subscription on the `orders` tabl
 
 - **`StripeObject` is not a plain dict**: the Stripe Python SDK's `construct_event()` returns a `StripeObject`, not a regular Python dict. Calling `.get()` on it raises `AttributeError: get` because `StripeObject.__getattr__` tries to look up `"get"` as a key, not as a method. `dict(StripeObject)` also fails — it tries numeric indices and hits `KeyError: 0`. The fix: once the signature is verified, parse the raw `payload` bytes as a plain JSON dict with `json.loads(payload)` and use that instead of the StripeObject.
 - **Supabase `service_role` still needs PostgreSQL GRANTs**: the service role key bypasses RLS (row-level security policies) but not PostgreSQL table-level permissions, which are a separate access control layer. The backend was getting `permission denied for table orders` (error 42501) even with the service role key. Fix: `GRANT ALL ON public.<table> TO service_role` for each table. I had assumed the service role had blanket access — it bypasses RLS, but table-level GRANTs are still enforced.
-- **Inline comments in `.env` break key values**: the `.env.example` had inline comments on the same line as values (`SUPABASE_KEY=... # service role key`). Copying that format into the actual `.env` caused `python-dotenv` to include everything after `#` as part of the key value, resulting in a 401 `Invalid API key` error from Supabase on startup.
 - **Realtime payload doesn't include joined data**: when a new `orders` row is inserted, the Realtime payload only contains the `orders` row — no `order_items`, no `table_number`. Rather than trying to patch the local state from the partial payload, the dashboard re-fetches `GET /orders/` on each INSERT event to get the fully joined data. Simpler and more correct.
 
 ### What I learned
@@ -226,27 +225,40 @@ Phase 4: staff dashboard — Supabase Realtime subscription on the `orders` tabl
 
 ### What's next
 
-Phase 5: admin panel — menu CRUD (add, edit, delete items), availability toggle (mark items as sold out without deleting), protected by Supabase Auth so only parents can access it.
+Phase 5: admin panel — menu CRUD (add/edit/delete items, availability toggle), password-protected for parents.
 
 ---
 
 ## Phase 5 — Admin panel
-*Date: August 2026*
+*Date: July 2026*
 
 ### What I built
-<!-- Fill this in -->
+
+- `POST /auth/verify` FastAPI endpoint — receives `{ password, role }`, checks against `STAFF_PASSWORD` / `ADMIN_PASSWORD` env vars, returns the role on match or 401. Password lives only in the backend env, never in the frontend bundle.
+- `POST /menu/`, `PATCH /menu/{id}`, `DELETE /menu/{id}` — full menu CRUD. PATCH uses partial updates (only non-None fields sent to Supabase). DELETE checks existence first and returns a clear 404 if the item doesn't exist. Historical orders are unaffected — `order_items.menu_item_id` uses `ON DELETE SET NULL`.
+- `ProtectedRoute.jsx` — wraps `/staff` and `/admin`. Checks `sessionStorage` for `bar_role`; if missing, renders an inline password prompt on the page itself (no redirect, no separate login page). Posts to `/auth/verify`, on success sets sessionStorage and renders children. Sign-out clears sessionStorage.
+- `AdminPanel.jsx` — fetches menu directly from Supabase (anon already has SELECT), groups by category. Add item form doubles as an edit form (pre-populated when "Edit" is clicked). Availability toggle and delete with confirm dialog. Re-fetches after every write.
 
 ### What broke / what was hard
-<!-- Fill this in -->
+
+Nothing broke in this phase — it was mostly straightforward CRUD. The main design challenge was the auth approach (see decisions made).
 
 ### What I learned
-<!-- Fill this in -->
+
+- **`sessionStorage` vs `localStorage`**: `sessionStorage` clears when the tab or browser is closed; `localStorage` persists across sessions. For a shared staff tablet, `sessionStorage` is the right call — staff don't need to re-enter the password mid-shift, but the next person who opens the browser can't access the dashboard without entering it again.
+- **Partial updates in Pydantic**: `MenuItemUpdate` has all Optional fields, but sending all of them (including `None`) to Supabase would overwrite existing values with nulls. The fix: `{k: v for k, v in body.model_dump().items() if v is not None}` — only send fields that were explicitly set. This lets the admin change just a price without touching the name or category.
+- **`model_dump()` replaces `.dict()`**: in Pydantic v2 (used by FastAPI now), `.dict()` is deprecated. The correct method is `.model_dump()`. Same result, different name.
 
 ### Decisions made
-<!-- How did you protect the admin routes? -->
+
+- **Simple password auth over Supabase Auth**: the threat model is preventing casual access (a customer stumbling onto `/staff`), not protecting high-value secrets. A shared password checked server-side is appropriate. Supabase Auth would require email accounts, a login page, and session management — all overhead that adds friction for staff and complexity for no real security gain in a family bar context.
+- **Inline password prompt, not a redirect**: redirecting unauthed users to `/login` would create a separate login page that looks like a public account system — confusing for customers who find it. Showing a minimal "Staff access — enter password" prompt inline on the page makes it clear it's not a public login.
+- **sessionStorage over localStorage for auth state**: desired behaviour for a shared staff tablet is that closing the browser clears the session. localStorage would persist until explicitly signed out, which is a risk if a staff member forgets to sign out. sessionStorage resets naturally on browser close.
+- **Admin panel reads from Supabase directly, writes via FastAPI**: anon already has SELECT on `menu_items` (from Phase 2), so there's no reason to proxy reads through FastAPI. Writes go through FastAPI because they need the service role key (which can't be in the frontend) and it keeps write logic server-side.
 
 ### What's next
-<!-- Fill this in -->
+
+Phase 6: QR code generation (one per table, encodes `/table/:id` URL, printable) and deployment to Vercel + Railway with production environment variables and the live Stripe keys.
 
 ---
 

@@ -196,7 +196,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 
 ## Current build status
 
-**Phase 4 complete.** Staff dashboard is live: fetches all orders on mount, receives new orders in real time via Supabase Realtime, and allows status updates (pending → preparing → served / cancelled). Ready to start Phase 5 (admin panel).
+**Phase 5 complete.** Admin panel is live: menu CRUD (add/edit/delete), availability toggle, password-protected via a shared staff/admin password checked server-side. Both `/staff` and `/admin` are guarded by an inline password prompt — no separate login page, no Supabase Auth. Ready to start Phase 6 (QR codes + deployment).
 
 ## Build phases
 
@@ -204,7 +204,8 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 2. ~~Customer menu flow — fetch menu from Supabase, display by category, cart (client-side state)~~ ✓
 3. ~~Stripe Checkout integration — session creation, webhook handler, order written to DB on payment~~ ✓
 4. ~~Staff dashboard — Supabase Realtime subscription, order status updates~~ ✓
-5. Admin panel — menu CRUD, availability toggle, protected by Supabase auth
-5. Admin panel — menu CRUD, availability toggle, protected by Supabase auth
+5. ~~Admin panel — menu CRUD, availability toggle, password-protected~~ ✓
+6. QR code generation — one per table
+7. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered
 6. QR code generation — one per table
 7. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered
