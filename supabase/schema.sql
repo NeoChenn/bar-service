@@ -56,10 +56,15 @@ CREATE TABLE order_items (
 --   2. RLS policy        — which rows within the table can this role see/modify?
 -- Both are required. GRANT without a policy = no rows. Policy without GRANT = error 42501.
 
--- menu_items and tables are publicly readable (anon key, no login required).
--- orders and order_items are readable by the anon role so the staff dashboard
--- can subscribe via Supabase Realtime and fetch order data. Order write access
--- is still only via the FastAPI backend (service role key, bypasses RLS).
+-- service_role bypasses RLS but still needs PostgreSQL-level GRANTs.
+-- anon role needs SELECT on tables the frontend reads directly.
+-- orders and order_items are readable by anon so the staff dashboard
+-- can subscribe via Supabase Realtime and fetch order data.
+
+GRANT ALL ON public.menu_items TO service_role;
+GRANT ALL ON public.tables TO service_role;
+GRANT ALL ON public.orders TO service_role;
+GRANT ALL ON public.order_items TO service_role;
 
 GRANT SELECT ON public.tables TO anon;
 GRANT SELECT ON public.menu_items TO anon;

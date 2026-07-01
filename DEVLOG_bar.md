@@ -196,22 +196,37 @@ Phase 4: staff dashboard — Supabase Realtime subscription on the `orders` tabl
 ---
 
 ## Phase 4 — Staff dashboard
-*Date: July/August 2026*
+*Date: July 2026*
 
 ### What I built
-<!-- Fill this in -->
+
+- `GET /orders/` — returns all orders joined with `order_items` and `tables(table_number)`, newest first, using the Supabase nested select syntax
+- `PATCH /orders/{order_id}/status` — validates the order exists (404 if not), updates status, returns the updated row. `OrderStatusUpdate` Pydantic model tightened from `str` to `Literal["preparing", "served", "cancelled"]` so FastAPI rejects invalid values before they reach the DB
+- `StaffDashboard.jsx` — on mount fetches all orders from `GET /orders/`, subscribes to Supabase Realtime INSERT events on `orders`, re-fetches on each new insert to get the complete joined data. Status update buttons call `PATCH /orders/{id}/status` and update local state optimistically. Colour-coded status badges (amber/blue/green/grey). Action buttons only shown for non-terminal states
+- Schema updated: `GRANT ALL` on all tables to `service_role`, `GRANT SELECT` on `orders` and `order_items` to `anon`
 
 ### What broke / what was hard
-<!-- Supabase Realtime edge cases? Connection handling? -->
+
+- **`StripeObject` is not a plain dict**: the Stripe Python SDK's `construct_event()` returns a `StripeObject`, not a regular Python dict. Calling `.get()` on it raises `AttributeError: get` because `StripeObject.__getattr__` tries to look up `"get"` as a key, not as a method. `dict(StripeObject)` also fails — it tries numeric indices and hits `KeyError: 0`. The fix: once the signature is verified, parse the raw `payload` bytes as a plain JSON dict with `json.loads(payload)` and use that instead of the StripeObject.
+- **Supabase `service_role` still needs PostgreSQL GRANTs**: the service role key bypasses RLS (row-level security policies) but not PostgreSQL table-level permissions, which are a separate access control layer. The backend was getting `permission denied for table orders` (error 42501) even with the service role key. Fix: `GRANT ALL ON public.<table> TO service_role` for each table. I had assumed the service role had blanket access — it bypasses RLS, but table-level GRANTs are still enforced.
+- **Inline comments in `.env` break key values**: the `.env.example` had inline comments on the same line as values (`SUPABASE_KEY=... # service role key`). Copying that format into the actual `.env` caused `python-dotenv` to include everything after `#` as part of the key value, resulting in a 401 `Invalid API key` error from Supabase on startup.
+- **Realtime payload doesn't include joined data**: when a new `orders` row is inserted, the Realtime payload only contains the `orders` row — no `order_items`, no `table_number`. Rather than trying to patch the local state from the partial payload, the dashboard re-fetches `GET /orders/` on each INSERT event to get the fully joined data. Simpler and more correct.
 
 ### What I learned
-<!-- Fill this in -->
+
+- **Supabase has two separate access control layers**: (1) PostgreSQL GRANT — table-level permissions that apply to all roles including `service_role`; (2) RLS policies — row-level filters that `service_role` bypasses but `anon` must satisfy. Both layers are independent. The service role key bypassing RLS does not mean it bypasses GRANT. This is the same two-layer system as Phase 2, but now it bit us on the backend side too.
+- **Supabase Realtime gives you INSERT rows, not joins**: the Realtime payload mirrors the raw database row — no foreign key resolution, no nested relations. If you need joined data (order items, table number) when a new row arrives, you have to fetch it separately. Re-fetching the full list is the simplest approach for small datasets.
+- **`StripeObject` vs plain dict**: the Stripe Python SDK wraps API responses in `StripeObject`, which supports bracket access (`obj["key"]`) and attribute access (`obj.key`) but not `.get()`. Once you've verified the webhook signature, it's cleaner to work with `json.loads(raw_payload)` as a plain dict than to fight the SDK's object model.
+- **`Literal` type in Pydantic**: using `Literal["preparing", "served", "cancelled"]` instead of `str` gives you automatic validation — FastAPI returns a 422 with a clear error message if an invalid status is posted, without writing any validation logic yourself. It also mirrors the `CHECK` constraint on the DB column, so the two layers of validation agree.
 
 ### Decisions made
-<!-- Fill this in -->
+
+- **Re-fetch full list on Realtime INSERT rather than appending the payload**: the Realtime payload only has the `orders` row, so appending it would show an order card with no items and no table number. Re-fetching `GET /orders/` is one extra network call but gives complete, correct data immediately.
+- **`pending` excluded from `OrderStatusUpdate`**: orders enter the `pending` state only via the Stripe webhook — staff should never be able to set an order back to pending. Excluding it from the `Literal` type enforces this at the API level, not just the UI.
 
 ### What's next
-<!-- Fill this in -->
+
+Phase 5: admin panel — menu CRUD (add, edit, delete items), availability toggle (mark items as sold out without deleting), protected by Supabase Auth so only parents can access it.
 
 ---
 

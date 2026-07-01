@@ -196,15 +196,15 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 
 ## Current build status
 
-**Phase 3 complete.** Full payment flow is working end-to-end: Stripe Checkout session creation with server-side price verification, webhook handler with signature verification and idempotency, order + order_items written to Supabase on confirmed payment, confirmation page with fallback polling. Ready to start Phase 4 (staff dashboard).
+**Phase 4 complete.** Staff dashboard is live: fetches all orders on mount, receives new orders in real time via Supabase Realtime, and allows status updates (pending → preparing → served / cancelled). Ready to start Phase 5 (admin panel).
 
 ## Build phases
 
 1. ~~Project scaffolding — repo, Vite frontend, FastAPI backend, Supabase schema, environment setup~~ ✓
 2. ~~Customer menu flow — fetch menu from Supabase, display by category, cart (client-side state)~~ ✓
 3. ~~Stripe Checkout integration — session creation, webhook handler, order written to DB on payment~~ ✓
-4. Staff dashboard — Supabase Realtime subscription, order status updates
-4. Staff dashboard — Supabase Realtime subscription, order status updates
+4. ~~Staff dashboard — Supabase Realtime subscription, order status updates~~ ✓
+5. Admin panel — menu CRUD, availability toggle, protected by Supabase auth
 5. Admin panel — menu CRUD, availability toggle, protected by Supabase auth
 6. QR code generation — one per table
 7. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered

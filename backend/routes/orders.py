@@ -100,7 +100,11 @@ async def stripe_webhook(
         raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
     if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
+        # construct_event() returns StripeObjects which don't support .get().
+        # Since the signature is already verified, parse the raw payload as a
+        # plain dict — safe and avoids the StripeObject API entirely.
+        event_dict = json.loads(payload)
+        session = event_dict["data"]["object"]
         session_id = session["id"]
 
         # Idempotency: Stripe retries webhooks that don't receive a 2xx response.
