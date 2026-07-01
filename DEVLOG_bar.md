@@ -94,21 +94,18 @@ React + Vite (frontend), FastAPI (backend), Supabase (PostgreSQL + Realtime + Au
 - `.env.example` files for both frontend and backend
 - `.gitignore` correctly excluding `.env`, `node_modules`, `__pycache__`, `dist`
 
-### What broke / what was hard
-
-`npm create vite@latest frontend -- --template react` passed `react` as a positional argument rather than the template flag, scaffolding a plain TypeScript project instead of React. Had to delete it and use `npx create-vite@latest frontend --template react` directly. Minor but a good reminder that the `npm create` forwarding syntax behaves differently to `npx` with flags.
-
 ### What I learned
 
-- The `npm create` forwarding syntax (`--`) doesn't reliably pass `--template` to the underlying package — use `npx create-vite@latest` directly instead
-- FastAPI's module import structure requires `__init__.py` in each package directory, otherwise relative imports fail at startup
-- Vite injects env vars at build time, not runtime — `import.meta.env.VITE_*` only works for variables prefixed with `VITE_`, and they must be present at build time for production
+- **When Supabase is enough vs when you need a custom backend**: Supabase's auto-generated REST API and the JS client handle the majority of this project — menu reads, order status updates, admin CRUD, and Realtime subscriptions are all done directly from the frontend. A custom backend (FastAPI here) is only necessary when you need server-side logic that can't be exposed to the browser. In this project that's exactly three things: (1) creating the Stripe Checkout session, because the secret key can never be in the client; (2) server-side total verification — recomputing the cart total from real DB prices before passing it to Stripe, because a client-sent total can be tampered with; (3) receiving and verifying the Stripe webhook before writing the order to the DB.
+- **`npm create` forwarding syntax is unreliable for flags**: `npm create vite@latest frontend -- --template react` passed `react` as a positional argument instead of the template. Use `npx create-vite@latest frontend --template react` directly to avoid this.
+- **FastAPI needs `__init__.py` in every package directory**: Without them, Python doesn't treat the folders as packages and relative imports fail at startup.
+- **Vite env vars are build-time, not runtime**: `import.meta.env.VITE_*` values are baked in at build time. Only variables prefixed with `VITE_` are exposed to the browser, which is what keeps the Supabase service key and Stripe secret key out of the frontend bundle.
 
 ### Decisions made
 
 - **Private GitHub repo from the start**: this project will eventually have Stripe keys and Supabase credentials in the environment — keeping the repo private is a basic hygiene step even though keys are gitignored.
 - **Skeleton routes returning 501**: rather than leaving route files empty, each endpoint has a docstring explaining its role and a `raise HTTPException(status_code=501)` placeholder. This means the FastAPI server starts cleanly and the auto-generated `/docs` page already shows the full API surface before any logic is implemented.
-- **Schema SQL in `supabase/schema.sql`**: keeping the schema as a committed SQL file means there's a source-of-truth version-controlled alongside the code, not just in the Supabase dashboard.
+- **Schema SQL in `supabase/schema.sql`**: keeping the schema as a committed SQL file gives you four things the Supabase dashboard alone doesn't: (1) **version control** — you can look at any past commit and see exactly what the DB looked like at that point, which matters when debugging a production bug introduced by a schema change; (2) **reproducibility** — setting up a second Supabase project (staging environment, disaster recovery, wiping and starting fresh) is one SQL file, not clicking through the dashboard trying to remember every column and constraint; (3) **single source of truth** — the dashboard is a GUI on top of the database and can be accidentally modified; the SQL file is the canonical definition you can always compare against; (4) **a foundation for migrations** — once the system is live with real data you can't drop and recreate tables, you'll need ALTER TABLE statements. Having the original schema committed gives you a clear baseline to reason from when writing those migrations.
 - **Why FastAPI exists alongside Supabase**: Supabase's auto-generated REST API handles most of the project — menu reads, order status updates, admin CRUD, and Realtime are all consumed directly by the frontend JS client. FastAPI is load-bearing for exactly three things that require a server you control: (1) creating the Stripe Checkout session, because `STRIPE_SECRET_KEY` can never be in the browser; (2) server-side total verification — recomputing the cart total from actual DB prices before creating the session, because a client-sent total can be tampered with; (3) receiving and verifying the Stripe webhook before writing the order. An alternative would be Supabase Edge Functions for these two endpoints, which would eliminate Railway entirely — worth considering once Stripe is familiar.
 
 ### What's next
