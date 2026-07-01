@@ -49,3 +49,22 @@ CREATE TABLE order_items (
 -- Enable Realtime on orders so the staff dashboard receives live inserts.
 -- In Supabase dashboard: Database → Replication → enable orders table.
 -- (Cannot be done via SQL — must be toggled in the Supabase dashboard UI.)
+
+-- ── RLS policies ─────────────────────────────────────────────────────────────
+-- Supabase has two layers of access control:
+--   1. PostgreSQL GRANT  — does this role have any access to the table at all?
+--   2. RLS policy        — which rows within the table can this role see/modify?
+-- Both are required. GRANT without a policy = no rows. Policy without GRANT = error 42501.
+
+-- menu_items and tables are publicly readable (anon key, no login required).
+-- orders and order_items are never read by the anon role — only written by the
+-- FastAPI backend via the service role key, which bypasses RLS entirely.
+
+GRANT SELECT ON public.tables TO anon;
+GRANT SELECT ON public.menu_items TO anon;
+
+CREATE POLICY "Public can read tables"
+    ON tables FOR SELECT USING (true);
+
+CREATE POLICY "Public can read menu items"
+    ON menu_items FOR SELECT USING (true);
