@@ -27,7 +27,7 @@ CREATE TABLE orders (
     table_id                 UUID REFERENCES tables(id) ON DELETE SET NULL,
     status                   TEXT NOT NULL DEFAULT 'pending'
                                  CHECK (status IN ('pending', 'preparing', 'served', 'cancelled')),
-    stripe_payment_intent_id TEXT,
+    stripe_session_id TEXT,            -- used to poll for the order on the confirmation page
     -- Total is computed server-side from menu prices; never trusted from the client.
     total_amount             NUMERIC(10, 2) NOT NULL,
     created_at               TIMESTAMPTZ DEFAULT NOW()

@@ -1,11 +1,14 @@
 import os
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routes import orders, menu, tables
-
+# Must be called before importing any module that reads env vars at module level
+# (stripe_service.py sets stripe.api_key on import; database.py creates the
+# Supabase client on import — both need the env vars already loaded).
 load_dotenv()
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from routes import orders, menu, tables
 
 app = FastAPI(title="Bar Ordering System")
 
