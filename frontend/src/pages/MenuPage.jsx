@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useCart } from '../context/CartContext'
+import MenuAssistant from '../components/MenuAssistant'
 
 export default function MenuPage() {
   const { tableId } = useParams()
@@ -110,6 +111,8 @@ export default function MenuPage() {
           </Link>
         </div>
       )}
+
+      <MenuAssistant />
     </div>
   )
 }

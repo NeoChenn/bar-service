@@ -393,19 +393,44 @@ Phase 9: LLM menu assistant — conversational assistant embedded in the menu pa
 *Date: TBD*
 
 ### What I built
-<!-- Fill this in -->
+
+- `backend/routes/assistant.py` — `POST /assistant/` endpoint. Fetches all available menu items from Supabase, builds a dynamic system prompt, calls `claude-haiku-4-5` with the conversation history (capped at last 10 messages), and returns the assistant reply.
+- `build_system_prompt()` — formats the live menu into a readable list injected into the system prompt, alongside behavioral rules (stay on-menu, never confirm allergens, match customer's language).
+- `Message` and `AssistantRequest` Pydantic models for the request body.
+- `frontend/src/components/MenuAssistant.jsx` — floating chat bubble (`position: fixed; bottom: 80px; right: 24px`) on the menu page. Clicking the 💬 button expands a 320×420 chat panel with: a header, an allergen disclaimer strip, a scrollable message history (auto-scrolls to latest), and an input form. User messages appear immediately in the UI before the API call completes.
+- `MenuPage.jsx` updated to import and render `<MenuAssistant />`.
+- `anthropic` added to `requirements.txt`.
 
 ### What broke / what was hard
-<!-- Fill this in -->
+
+- **Supabase returns NUMERIC as a Python `Decimal`**: `item['price']` comes back as a `Decimal` object, not a `float`. Calling `f"£{item['price']:.2f}"` in the system prompt raises `TypeError`. Fixed with an explicit `float()` cast: `f"£{float(item['price']):.2f}"`.
+- **Chat bubble position**: initially placed at `bottom: 24px`, which overlapped the sticky cart bar (`position: sticky; bottom: 0`) when items were in the cart. Moved to `bottom: 80px` to clear it.
 
 ### What I learned
-<!-- Fill this in -->
+
+- **The system prompt**: a special message sent to the LLM before the conversation starts that defines the assistant's role, knowledge, and constraints. Unlike fine-tuning, it doesn't change the model — it primes it with instructions and domain context that apply to this specific conversation. The model treats it as authoritative. For this project, it contains the full live menu and rules about how to behave.
+
+- **The Claude API is stateless — conversation history must be sent on every request**: Claude has no memory between calls. Every request must include the full conversation history so the model has context for the current message. The history is a list of alternating user/assistant messages. The frontend maintains this list in React state, appending each new message as the conversation progresses, and sends the full list on each turn.
+
+- **History capping**: sending the full conversation forever grows the token count (and cost) linearly. Capping at the last 10 messages keeps costs predictable. The full history is still held in React state for display — only the recent window is sent to the API. For a menu recommendation conversation, 10 messages is more than enough context.
+
+- **Dynamic system prompt from DB**: the menu is fetched fresh on every `/assistant/` request. If a menu item is marked unavailable mid-evening, the very next customer message gets a system prompt that excludes it — no cache invalidation, no staleness. This is only practical because the Supabase query is fast and the menu is small.
+
+- **`useRef` for scroll-to-bottom**: React doesn't provide a built-in way to scroll a list container to its bottom when new items arrive. The pattern: attach a `ref` to an empty `<div>` at the end of the messages list, then call `ref.current?.scrollIntoView({ behavior: 'smooth' })` in a `useEffect` that runs whenever `messages` changes.
+
+- **`position: fixed` for floating UI**: fixed-position elements are removed from the document flow entirely — they don't affect surrounding layout and don't scroll with the page. The chat bubble sits above everything regardless of scroll position. The tradeoff is that you have to account for other fixed/sticky elements manually (hence the `bottom: 80px` offset for the cart bar).
 
 ### Decisions made
-<!-- Fill this in -->
+
+- **System prompt built server-side from live DB, not hardcoded**: the menu is injected at request time from Supabase. Sending the menu from the frontend would let a customer modify it before sending — a trivial prompt injection. Fetching server-side means the model always has the real menu and customers can't influence what it knows.
+- **History capped at 10 messages server-side**: the full history stays in React state for display, but only the last 10 messages go to Claude. This bounds token cost per request regardless of conversation length. 10 messages is sufficient context for a menu recommendation flow.
+- **`claude-haiku-4-5` for cost efficiency**: the task is recommendation from a structured menu, not complex reasoning. Haiku handles it well and keeps cost at fractions of a penny per conversation — appropriate for a high-volume customer-facing feature.
+- **Floating bubble rather than inline chat**: embedding the chat inline would push menu content down and disrupt browsing. A fixed floating bubble is a pattern customers recognise from support widgets — discoverable without being intrusive, and closeable without leaving the page.
+- **Allergen disclaimer in both the UI and the system prompt**: the UI strip ensures every customer sees it the moment they open the panel, regardless of what they ask. The system prompt rule ensures the model reinforces it whenever allergens come up in conversation. Belt and braces.
 
 ### What's next
-<!-- Fill this in -->
+
+Phase 6: QR code generation — one unique QR code per table, each encoding the `/table/:id` URL for that table. Printable format for laminating at tables.
 
 ---
 

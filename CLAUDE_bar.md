@@ -195,7 +195,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 
 ## Current build status
 
-**Phase 8 complete.** Order history view is live at `/history` (staff-protected). Full record of all orders filterable by date range, status, and table number — items always visible inline with per-line subtotals. Backend: `GET /orders/history` with optional query params. Ready to start Phase 9 (LLM menu assistant).
+**Phase 9 complete.** LLM menu assistant is live — a floating 💬 chat bubble on the menu page backed by `claude-haiku-4-5`. System prompt generated server-side from the live Supabase menu on every request. Allergen disclaimer shown in UI and enforced in the system prompt. Ready to start Phase 6 (QR codes) then Phase 10 (deployment).
 
 ## Build phases
 
@@ -207,5 +207,5 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 6. QR code generation — one per table
 7. ~~Analytics dashboard — revenue by day/week/month, busiest hours, top items, average order value; Recharts; admin-protected~~ ✓
 8. ~~Order history / receipt view — searchable past orders for staff by date, table, or status; full item breakdown; dispute resolution~~ ✓
-9. LLM menu assistant — conversational recommendations from live menu, system prompt generated server-side from Supabase, Claude Haiku
+9. ~~LLM menu assistant — conversational recommendations from live menu, system prompt generated server-side from Supabase, Claude Haiku~~ ✓
 10. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered
