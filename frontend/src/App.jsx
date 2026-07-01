@@ -5,6 +5,8 @@ import CartPage from './pages/CartPage'
 import ConfirmationPage from './pages/ConfirmationPage'
 import StaffDashboard from './pages/StaffDashboard'
 import AdminPanel from './pages/AdminPanel'
+import AnalyticsDashboard from './pages/AnalyticsDashboard'
+import OrderHistory from './pages/OrderHistory'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -25,6 +27,16 @@ export default function App() {
           {/* Admin — separate password from staff */}
           <Route path="/admin" element={
             <ProtectedRoute role="admin"><AdminPanel /></ProtectedRoute>
+          } />
+
+          {/* Analytics — admin only */}
+          <Route path="/analytics" element={
+            <ProtectedRoute role="admin"><AnalyticsDashboard /></ProtectedRoute>
+          } />
+
+          {/* Order history — staff only */}
+          <Route path="/history" element={
+            <ProtectedRoute role="staff"><OrderHistory /></ProtectedRoute>
           } />
         </Routes>
       </BrowserRouter>

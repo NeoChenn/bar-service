@@ -140,7 +140,6 @@ All development uses Stripe test mode with test API keys and fake card numbers. 
 - Customer accounts / login — frictionless flow, no signup required
 - Real-time menu updates pushed to open customer sessions
 - Order history for customers
-- Analytics dashboard (potential future addition)
 - Refund UI (handled directly via Stripe dashboard by parents)
 
 ## Coding guidelines
@@ -196,7 +195,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 
 ## Current build status
 
-**Phase 5 complete.** Admin panel is live: menu CRUD (add/edit/delete), availability toggle, password-protected via a shared staff/admin password checked server-side. Both `/staff` and `/admin` are guarded by an inline password prompt — no separate login page, no Supabase Auth. Ready to start Phase 6 (QR codes + deployment).
+**Phase 8 complete.** Order history view is live at `/history` (staff-protected). Full record of all orders filterable by date range, status, and table number — items always visible inline with per-line subtotals. Backend: `GET /orders/history` with optional query params. Ready to start Phase 9 (LLM menu assistant).
 
 ## Build phases
 
@@ -206,6 +205,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 4. ~~Staff dashboard — Supabase Realtime subscription, order status updates~~ ✓
 5. ~~Admin panel — menu CRUD, availability toggle, password-protected~~ ✓
 6. QR code generation — one per table
-7. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered
-6. QR code generation — one per table
-7. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered
+7. ~~Analytics dashboard — revenue by day/week/month, busiest hours, top items, average order value; Recharts; admin-protected~~ ✓
+8. ~~Order history / receipt view — searchable past orders for staff by date, table, or status; full item breakdown; dispute resolution~~ ✓
+9. LLM menu assistant — conversational recommendations from live menu, system prompt generated server-side from Supabase, Claude Haiku
+10. Polish and deployment — Vercel + Railway, swap to production Stripe keys once business registered

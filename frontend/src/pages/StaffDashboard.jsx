@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -76,7 +77,10 @@ export default function StaffDashboard() {
 
   return (
     <div>
-      <h1>Staff Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>Staff Dashboard</h1>
+        <Link to="/history">Order history →</Link>
+      </div>
 
       {orders.length === 0 && <p>No orders yet — they will appear here automatically.</p>}
 

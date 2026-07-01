@@ -1,7 +1,7 @@
 import os
 import json
 import stripe
-from fastapi import APIRouter, HTTPException, Request, Header
+from fastapi import APIRouter, HTTPException, Request, Header, Query
 from models.models import CheckoutRequest, OrderStatusUpdate
 from database import supabase
 from services import stripe_service
@@ -174,9 +174,10 @@ async def get_order_by_session(session_id: str):
 
 @router.get("/")
 async def list_orders():
-    """Return all orders for the staff dashboard, newest first, with items and table number."""
+    """Return active orders (pending/preparing) for the staff dashboard, newest first."""
     result = supabase.from_("orders") \
         .select("*, order_items(*), tables(table_number)") \
+        .in_("status", ["pending", "preparing"]) \
         .order("created_at", desc=True) \
         .execute()
     return result.data
@@ -197,6 +198,40 @@ async def update_order_status(order_id: str, body: OrderStatusUpdate):
         .eq("id", order_id) \
         .execute()
     return result.data[0]
+
+
+@router.get("/history")
+async def list_order_history(
+    start_date:   str | None = Query(default=None),
+    end_date:     str | None = Query(default=None),
+    status:       str | None = Query(default=None),
+    table_number: str | None = Query(default=None),
+):
+    """
+    Return all orders for the staff history view, newest first.
+    All filters are optional and can be combined freely.
+    table_number is resolved to a table_id first because Supabase's
+    chained API cannot filter on joined/foreign-key fields directly.
+    """
+    query = supabase.from_("orders") \
+        .select("*, order_items(*), tables(table_number)") \
+        .order("created_at", desc=True)
+
+    if start_date:
+        query = query.gte("created_at", f"{start_date}T00:00:00+00:00")
+    if end_date:
+        query = query.lte("created_at", f"{end_date}T23:59:59+00:00")
+    if status:
+        query = query.eq("status", status)
+    if table_number:
+        table_res = supabase.from_("tables").select("id") \
+            .eq("table_number", table_number).execute()
+        if not table_res.data:
+            return []
+        query = query.eq("table_id", table_res.data[0]["id"])
+
+    result = query.execute()
+    return result.data
 
 
 @router.get("/{order_id}")

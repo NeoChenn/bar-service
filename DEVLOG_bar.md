@@ -209,7 +209,39 @@ Phase 4: staff dashboard — Supabase Realtime subscription on the `orders` tabl
 
 - **`StripeObject` is not a plain dict**: the Stripe Python SDK's `construct_event()` returns a `StripeObject`, not a regular Python dict. Calling `.get()` on it raises `AttributeError: get` because `StripeObject.__getattr__` tries to look up `"get"` as a key, not as a method. `dict(StripeObject)` also fails — it tries numeric indices and hits `KeyError: 0`. The fix: once the signature is verified, parse the raw `payload` bytes as a plain JSON dict with `json.loads(payload)` and use that instead of the StripeObject.
 - **Supabase `service_role` still needs PostgreSQL GRANTs**: the service role key bypasses RLS (row-level security policies) but not PostgreSQL table-level permissions, which are a separate access control layer. The backend was getting `permission denied for table orders` (error 42501) even with the service role key. Fix: `GRANT ALL ON public.<table> TO service_role` for each table. I had assumed the service role had blanket access — it bypasses RLS, but table-level GRANTs are still enforced.
-- **Realtime payload doesn't include joined data**: when a new `orders` row is inserted, the Realtime payload only contains the `orders` row — no `order_items`, no `table_number`. Rather than trying to patch the local state from the partial payload, the dashboard re-fetches `GET /orders/` on each INSERT event to get the fully joined data. Simpler and more correct.
+
+**Supabase Realtime:**
+
+**What it is:**
+Supabase Realtime is a WebSocket-based service built on top of PostgreSQL's logical 
+replication. When rows are inserted or updated in the database, Supabase detects the 
+change via the Write-Ahead Log (WAL) and pushes it to subscribed clients in milliseconds 
+— no polling needed.
+
+**Why it uses logical replication:**
+PostgreSQL's WAL is a sequential log of every database change, originally designed for 
+keeping replica servers in sync. Supabase taps into this stream for a different purpose — 
+forwarding change events to connected WebSocket clients in real time. No physical copy of 
+the data is made; Supabase just reads the stream and forwards relevant events.
+
+**How it works in the staff dashboard:**
+On mount, the dashboard fetches all existing orders from Supabase. It then subscribes to 
+postgres_changes events on the orders table — INSERT for new orders appearing live, UPDATE 
+for status changes (pending → preparing → served). The subscription is cleaned up on 
+component unmount via supabase.removeChannel(channel) to prevent memory leaks, same 
+principle as unsubscribing from auth state changes in Ascend.
+
+**The key pattern:**
+Fetch existing data first, then subscribe for future changes. The subscription only captures 
+changes that happen after subscribing — it does not retroactively deliver existing rows.
+
+**RLS and Realtime:**
+Realtime respects RLS policies. If a user doesn't have SELECT permission on a table, they 
+won't receive realtime events for it either. Staff need a shared authenticated login with 
+full SELECT access to the orders table since there are no per-customer accounts.
+
+**Realtime payload doesn't include joined data** 
+when a new `orders` row is inserted, the Realtime payload only contains the `orders` row — no `order_items`, no `table_number`. Rather than trying to patch the local state from the partial payload, the dashboard re-fetches `GET /orders/` on each INSERT event to get the fully joined data. Simpler and more correct.
 
 ### What I learned
 
@@ -288,6 +320,95 @@ These are all interview questions — answer them here while it's fresh -->
 
 ---
 
+## Phase 7 — Analytics dashboard
+*Date: July 2026*
+
+### What I built
+
+- `GET /analytics/summary?days=N` FastAPI endpoint — returns all four metrics in one response: revenue bucketed by day/week/month, order count by hour of day (busiest hours), top 10 items by quantity and by revenue, and average order value. `days=0` means all time; any positive value filters to the last N days.
+- `backend/routes/analytics.py` — aggregates entirely in Python using `collections.defaultdict`. Two Supabase queries (orders, then order_items for those order IDs), then grouping and sorting in Python.
+- `AnalyticsDashboard.jsx` — four metric sections rendered with Recharts: a `LineChart` for revenue over time (with daily/weekly/monthly toggle that switches between pre-fetched arrays client-side), a `BarChart` for busiest hours (always all 24 hours, zero-filled), two horizontal `BarChart`s for top items (by quantity and by revenue). Period selector (Last 7 days / 30 days / 3 months / Last year / All time) triggers a re-fetch via `useEffect([days])`.
+- Recharts installed (`npm install recharts`, 39 packages).
+- `/analytics` route added to `App.jsx`, wrapped with `<ProtectedRoute role="admin">`.
+
+
+
+### What I learned
+
+- **Python-side aggregation over SQL functions**: At the scale of a small bar (~10MB/year of order data), fetching all matching orders and aggregating in Python is simpler and equally performant compared to writing and maintaining PostgreSQL functions. The tradeoff — slightly more data transferred over the network — is irrelevant at this scale. SQL functions would be the right choice at larger scale where pushing computation to the database reduces network overhead meaningfully.
+
+- **Recharts**: A React charting library built on D3. Charts are composed from individual imported components — `BarChart`, `Bar`, `XAxis`, `YAxis`, `CartesianGrid`, `Tooltip`, `ResponsiveContainer`. Key concepts:
+  - `ResponsiveContainer` is non-optional — without it charts render at a fixed pixel width that breaks on mobile. `width="100%"` with a fixed pixel height is the standard pattern.
+  - `dataKey` tells each axis, line, or bar which field in the data array to read from.
+  - `tickFormatter` on `XAxis` formats axis labels (e.g. converting hour integer 14 to "14:00").
+  - `layout="vertical"` on `BarChart` flips the axes — better for horizontal bars where the category labels (item names) are long strings that don't fit on the X axis.
+  - `Tooltip` handles hover popups automatically, customisable with `formatter` for units like £.
+
+### Decisions made
+
+- **`status != 'cancelled'` rather than `status = 'served'`**: payment is confirmed at the point the Stripe webhook fires and the order is written to the DB. Pending and preparing orders represent real revenue that is almost certainly going to be fulfilled. Excluding them would undercount revenue during an active service. Only cancelled orders (which were explicitly rejected) should be excluded.
+- **Single endpoint, all metrics**: all four metrics are computed in one request so the frontend doesn't need to coordinate multiple fetches. The period filter (`days`) applies to all metrics consistently — no risk of the revenue chart and top-items chart showing data from different time windows.
+- **Revenue bucketing is a client-side toggle, not a re-fetch**: all three revenue arrays (daily, weekly, monthly) are returned in the single response. Switching between them in the UI is instant — no loading state, no network round-trip. This works because all three are cheap to compute on the same dataset.
+- **`days=0` as "all time" sentinel**: rather than an optional parameter that could be `null` or absent, `0` is an explicit value meaning "no date cutoff". Simpler to pass in a query string and reason about.
+
+### What's next
+
+Phase 8: order history / receipt view — searchable list of past orders for staff (by date, table number, or status), with a full item breakdown on click. Useful for dispute resolution and reviewing past service.
+
+---
+
+## Phase 8 — Order history / receipt view
+*Date: July 2026*
+
+### What I built
+
+- `GET /orders/history` FastAPI endpoint with four optional query params: `start_date`, `end_date`, `status`, `table_number`. All can be combined freely. Returns all matching orders with items and table number joined, newest first.
+- `OrderHistory.jsx` — filter form at the top (date range, status dropdown, table number), Apply and Clear buttons, and a list of order cards below. Each card shows table number, timestamp, colour-coded status badge, the full item list with per-line subtotals (quantity × price\_at\_order), and the order total. Items are always rendered inline — no expand/collapse.
+- `/history` route in `App.jsx`, staff-protected via `ProtectedRoute`.
+
+### What broke / what was hard
+
+- **FastAPI route ordering**: `GET /history` must be declared before `GET /{order_id}` in `orders.py`. FastAPI matches routes top-to-bottom — a parameterised route like `/{order_id}` captures any string segment, so placing `/history` after it means "history" gets matched as an order ID and the handler returns a 404. Static path segments must always come before parameterised ones in the same router.
+- **Supabase can't filter on joined fields**: `table_number` lives on the `tables` table, joined into the result via `select("..., tables(table_number)")`. Supabase's chained ORM API only filters on columns of the base table. To filter by table number, the fix is a separate preliminary query to resolve `table_number → table_id`, then filter the orders query on `table_id` — a native column on `orders`.
+
+### What I learned
+
+- **FastAPI route ordering matters**: FastAPI matches routes in declaration order. Parameterised routes (`/{id}`) are greedy — they capture any value at that path position. Any specific, static sub-paths (like `/history`, `/by-session/{id}`) must be declared before parameterised catch-alls at the same level, or they will never be reached. This is different from Express.js, which is also order-sensitive, but it's easy to forget in FastAPI where route definitions are spread across files.
+- **Supabase PostgREST filters only operate on the base table**: when you `.select("*, tables(table_number)")`, the `tables(table_number)` part is a nested resource resolved at the PostgREST layer — it's not a column you can filter on with `.eq()`. To filter by a value on a related table, resolve it to the FK column on the base table first (one extra query), then filter on that FK. For high-traffic endpoints this could be optimised with a DB view or raw SQL, but at this scale the extra query is fine.
+- **`useEffect` with an object dependency — reference equality**: React's `useEffect` uses `Object.is` to compare dependency values between renders. Primitive values (strings, numbers) are compared by value; objects are compared by reference. Setting `setAppliedFilters({ ... })` always creates a new object reference, so the effect always fires when Apply is clicked — even if the filter values haven't changed. This is intentional behaviour: Apply should always re-fetch, not diff against the previous values.
+
+### Decisions made
+
+- **Apply button rather than auto-fetch**: date inputs fire `onChange` on every keystroke. Auto-fetching on change would send a request per character typed — noisy and unnecessary. An explicit Apply button gives the user control over when the fetch fires, which is also more natural for a date range where both fields usually need to be set before the result is meaningful.
+- **`appliedFilters` object as the single `useEffect` dependency**: separates "what the user is currently typing in the form" from "what was last submitted". The effect only runs when Apply or Clear is pressed. This also makes Clear clean: reset the form state and set `appliedFilters` back to `{}` — the effect fires and re-fetches with no params.
+- **Separate `/history` route rather than filters on the live dashboard**: the staff dashboard is intentionally minimal — a glanceable at-a-glance view during active service. Adding a date-range filter UI to it would clutter the page. A dedicated `/history` route keeps each view focused on one job.
+
+### What's next
+
+Phase 9: LLM menu assistant — conversational assistant embedded in the menu page, system prompt generated server-side from the live Supabase menu, Claude Haiku model.
+
+---
+
+## Phase 9 — LLM menu assistant
+*Date: TBD*
+
+### What I built
+<!-- Fill this in -->
+
+### What broke / what was hard
+<!-- Fill this in -->
+
+### What I learned
+<!-- Fill this in -->
+
+### Decisions made
+<!-- Fill this in -->
+
+### What's next
+<!-- Fill this in -->
+
+---
+
 ## Key technical decisions (running list)
 
 | Decision | Alternatives considered | Why I chose this |
@@ -300,6 +421,9 @@ These are all interview questions — answer them here while it's fresh -->
 | Bar counter orders kept traditional | Bar counter as a virtual "table" | Wetherspoons model — simpler, proven at scale, no benefit to merging |
 | ON DELETE SET NULL for menu_item_id | CASCADE, RESTRICT | Preserves order history when menu items are deleted |
 | Price + name snapshots on order_items | Live joins to menu_items | Historical orders must not be affected by future menu changes |
+| Dynamic system prompt for LLM assistant | Hardcode menu in prompt, send menu from frontend | Menu fetched server-side and injected at request time — prevents client tampering and keeps context fresh from DB |
+| Recharts for analytics visualisation | Chart.js, D3, Victory | Recharts is React-native (components, not imperative canvas) and has sensible defaults for the charts needed here |
+| Order history kept permanently | Auto-delete after N days | Business value for dispute resolution and trend analysis outweighs storage cost (~10MB/year at this bar's scale) |
 
 ---
 
