@@ -96,11 +96,8 @@ React + Vite (frontend), FastAPI (backend), Supabase (PostgreSQL + Realtime + Au
 
 ### What I learned
 
-- **When Supabase is enough vs when you need a custom backend**: Supabase's auto-generated REST API and the JS client handle the majority of this project — menu reads, order status updates, admin CRUD, and Realtime subscriptions are all done directly from the frontend. A custom backend (FastAPI here) is only necessary when you need server-side logic that can't be exposed to the browser. In this project that's exactly three things: (1) creating the Stripe Checkout session, because the secret key can never be in the client; (2) server-side total verification — recomputing the cart total from real DB prices before passing it to Stripe, because a client-sent total can be tampered with; (3) receiving and verifying the Stripe webhook before writing the order to the DB.
-- **`npm create` forwarding syntax is unreliable for flags**: `npm create vite@latest frontend -- --template react` passed `react` as a positional argument instead of the template. Use `npx create-vite@latest frontend --template react` directly to avoid this.
 - **FastAPI needs `__init__.py` in every package directory**: Without them, Python doesn't treat the folders as packages and relative imports fail at startup.
-- **Vite env vars are build-time, not runtime**: `import.meta.env.VITE_*` values are baked in at build time. Only variables prefixed with `VITE_` are exposed to the browser, which is what keeps the Supabase service key and Stripe secret key out of the frontend bundle.
-
+up
 ### Decisions made
 
 - **Private GitHub repo from the start**: this project will eventually have Stripe keys and Supabase credentials in the environment — keeping the repo private is a basic hygiene step even though keys are gitignored.
@@ -118,19 +115,29 @@ Phase 2: customer menu flow — connect to Supabase, fetch `menu_items` where `a
 *Date: July 2026*
 
 ### What I built
-<!-- Fill this in -->
 
-### What broke / what was hard
-<!-- Fill this in -->
+- `CartContext.jsx` — shared cart state using React Context + useReducer, persisted to `localStorage` so the cart survives page refreshes. State shape: `{ tableId, items: [{ id, name, price, quantity }] }`. Actions: `SET_TABLE`, `ADD_ITEM`, `UPDATE_QUANTITY`, `REMOVE_ITEM`, `CLEAR_CART` (stubbed for Phase 3). `total` is derived and passed down through context.
+- `MenuPage.jsx` — on mount, runs table validation and menu fetch in parallel using `Promise.all`. If the table UUID from the URL doesn't exist in the DB, renders an error and stops — bad QR codes go nowhere. Menu items grouped by category client-side with a `reduce`. Each item shows an "Add" button when qty is 0, or inline −/+ controls once in the cart. Sticky "View order (N items) →" bar appears at the bottom when the cart is non-empty.
+- `CartPage.jsx` — reads entirely from CartContext (no Supabase calls). Shows each item with −/+ controls, a × remove button, per-line totals, and a running order total. "← Back to menu" links back to `/table/:tableId` using the tableId stored in context. Checkout button is rendered but disabled — Phase 3 will wire it up.
+- `App.jsx` — wrapped with `<CartProvider>` so cart state is available across all routes.
 
 ### What I learned
-<!-- Fill this in -->
+
+- **React Context + useReducer is the right tool for shared client-side state of this scale**: the cart needs to be readable and writable from multiple pages (MenuPage adds items, CartPage adjusts them). Context avoids prop drilling without reaching for an external library. `useReducer` is preferable to `useState` here because all cart mutations are discrete, named actions — easier to reason about and extend (e.g. `CLEAR_CART` for Phase 3 was added now at no cost).
+- **`localStorage` persistence needs a lazy initialiser, not a `useEffect`**: if you initialise state with `useReducer(reducer, { tableId: null, items: [] })` and then rehydrate from `localStorage` in a `useEffect`, there's a render flash where the cart appears empty before the effect runs. Using the third argument of `useReducer` (the initialiser function) loads from `localStorage` synchronously before the first render — no flash.
+- **`Promise.all` for parallel Supabase queries**: table validation and menu fetch are independent — running them sequentially would double the load time for no reason. `Promise.all` fires both simultaneously and waits for both to resolve.
+- **Data reads go directly from React to Supabase — no FastAPI involved**: the FastAPI backend has nothing to do in Phase 2. Menu reads and table lookups go through the Supabase JS client. FastAPI only enters the picture in Phase 3 for Stripe session creation and webhook handling.
 
 ### Decisions made
-<!-- Fill this in -->
+
+- **Cart state lives in Context, not URL or server**: the cart is intentionally ephemeral and per-session. There are no customer accounts, so there's no user ID to attach it to. Context + localStorage is the right scope — lightweight, no auth required, survives refreshes.
+- **`CLEAR_CART` action stubbed now**: the checkout flow (Phase 3) needs to clear the cart after a successful payment. Rather than adding the action later and hunting for where it should live, it's defined in the reducer now. Cheap to include, annoying to retrofit.
+- **Checkout button disabled rather than absent**: rendering a disabled "Proceed to checkout" button in CartPage (rather than omitting it entirely) makes the UI feel complete and sets the right expectation for Phase 3. The `title` attribute explains it's coming soon.
+- **`SET_TABLE` dispatched on every MenuPage load**: even if the tableId is already in localStorage, we re-dispatch `SET_TABLE` on mount. This handles the case where a customer scans a different table's QR code in the same browser session — the cart updates to the new table rather than silently using a stale one.
 
 ### What's next
-<!-- Fill this in -->
+
+Phase 3: Stripe Checkout integration — the most technically critical phase. Implement the FastAPI `/orders/checkout` endpoint (server-side total verification, Stripe session creation), the `/orders/webhook` handler (signature verification, writing `orders` + `order_items` to DB), and wire up the checkout button in CartPage. Also implement the ConfirmationPage polling loop.
 
 ---
 

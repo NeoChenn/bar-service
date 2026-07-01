@@ -196,12 +196,12 @@ VITE_STRIPE_PUBLISHABLE_KEY=   # pk_test_... during development
 
 ## Current build status
 
-**Phase 1 complete.** Repo is live on GitHub. Vite React frontend, FastAPI backend, Supabase schema, and all route/page skeletons are in place. Environment variable templates set up for both services. Ready to start Phase 2 (customer menu flow).
+**Phase 2 complete.** Customer menu flow is live: table validation, menu grouped by category, cart in React Context with localStorage persistence, CartPage with quantity controls and running total. Ready to start Phase 3 (Stripe Checkout integration).
 
 ## Build phases
 
 1. ~~Project scaffolding — repo, Vite frontend, FastAPI backend, Supabase schema, environment setup~~ ✓
-2. Customer menu flow — fetch menu from Supabase, display by category, cart (client-side state)
+2. ~~Customer menu flow — fetch menu from Supabase, display by category, cart (client-side state)~~ ✓
 3. Stripe Checkout integration — session creation, webhook handler, order written to DB on payment
 4. Staff dashboard — Supabase Realtime subscription, order status updates
 5. Admin panel — menu CRUD, availability toggle, protected by Supabase auth
