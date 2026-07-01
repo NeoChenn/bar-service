@@ -57,14 +57,23 @@ CREATE TABLE order_items (
 -- Both are required. GRANT without a policy = no rows. Policy without GRANT = error 42501.
 
 -- menu_items and tables are publicly readable (anon key, no login required).
--- orders and order_items are never read by the anon role — only written by the
--- FastAPI backend via the service role key, which bypasses RLS entirely.
+-- orders and order_items are readable by the anon role so the staff dashboard
+-- can subscribe via Supabase Realtime and fetch order data. Order write access
+-- is still only via the FastAPI backend (service role key, bypasses RLS).
 
 GRANT SELECT ON public.tables TO anon;
 GRANT SELECT ON public.menu_items TO anon;
+GRANT SELECT ON public.orders TO anon;
+GRANT SELECT ON public.order_items TO anon;
 
 CREATE POLICY "Public can read tables"
     ON tables FOR SELECT USING (true);
 
 CREATE POLICY "Public can read menu items"
     ON menu_items FOR SELECT USING (true);
+
+CREATE POLICY "Staff can read orders"
+    ON orders FOR SELECT USING (true);
+
+CREATE POLICY "Staff can read order items"
+    ON order_items FOR SELECT USING (true);

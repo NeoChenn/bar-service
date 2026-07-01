@@ -170,16 +170,29 @@ async def get_order_by_session(session_id: str):
 
 @router.get("/")
 async def list_orders():
-    """Return all orders for the staff dashboard, newest first."""
-    # TODO (Phase 4)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Return all orders for the staff dashboard, newest first, with items and table number."""
+    result = supabase.from_("orders") \
+        .select("*, order_items(*), tables(table_number)") \
+        .order("created_at", desc=True) \
+        .execute()
+    return result.data
 
 
 @router.patch("/{order_id}/status")
 async def update_order_status(order_id: str, body: OrderStatusUpdate):
-    """Allow staff to update an order's status (preparing / served / cancelled)."""
-    # TODO (Phase 4)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """
+    Allow staff to advance an order's status (preparing / served / cancelled).
+    pending is not an allowed target — orders enter that state via the webhook only.
+    """
+    existing = supabase.from_("orders").select("id").eq("id", order_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    result = supabase.from_("orders") \
+        .update({"status": body.status}) \
+        .eq("id", order_id) \
+        .execute()
+    return result.data[0]
 
 
 @router.get("/{order_id}")

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, UUID4
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 
 
@@ -46,4 +46,5 @@ class MenuItem(BaseModel):
 # ── Orders ────────────────────────────────────────────────────────────────────
 
 class OrderStatusUpdate(BaseModel):
-    status: str  # pending | preparing | served | cancelled
+    # pending is excluded — orders start pending via the webhook, staff can't set it
+    status: Literal["preparing", "served", "cancelled"]
