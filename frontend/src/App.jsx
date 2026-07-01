@@ -5,6 +5,7 @@ import CartPage from './pages/CartPage'
 import ConfirmationPage from './pages/ConfirmationPage'
 import StaffDashboard from './pages/StaffDashboard'
 import AdminPanel from './pages/AdminPanel'
+import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
   return (
@@ -16,11 +17,15 @@ export default function App() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
 
-          {/* Staff */}
-          <Route path="/staff" element={<StaffDashboard />} />
+          {/* Staff — password protected, session cleared on tab close */}
+          <Route path="/staff" element={
+            <ProtectedRoute role="staff"><StaffDashboard /></ProtectedRoute>
+          } />
 
-          {/* Admin */}
-          <Route path="/admin" element={<AdminPanel />} />
+          {/* Admin — separate password from staff */}
+          <Route path="/admin" element={
+            <ProtectedRoute role="admin"><AdminPanel /></ProtectedRoute>
+          } />
         </Routes>
       </BrowserRouter>
     </CartProvider>

@@ -8,7 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import orders, menu, tables
+from routes import orders, menu, tables, auth
 
 app = FastAPI(title="Bar Ordering System")
 
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(orders.router, prefix="/orders", tags=["orders"])
 app.include_router(menu.router, prefix="/menu", tags=["menu"])
 app.include_router(tables.router, prefix="/tables", tags=["tables"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 
 @app.get("/health")
